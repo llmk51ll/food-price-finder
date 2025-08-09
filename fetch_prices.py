@@ -7,6 +7,7 @@ Example cron (run daily at 7AM):
 On Windows, use Task Scheduler to schedule the script.
 """
 
+import os
 import re
 import urllib.parse
 from typing import Optional, Tuple
@@ -20,17 +21,24 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
 # ------------ CONFIG ------------
-SPREADSHEET_ID = "10NLm6vPypgpZdHaLoBsWoBq9I87NCzgq5oPCXgKxvTw"
-WORKSHEET_NAME = "Master Sheet"  # Worksheet name within the spreadsheet
-NAME_COL = 5  # E column: item name
-STORE_COL = 12  # L column: Online_Store
-URL_COL = 13  # M column: Price_URL
-PRICE_COL = 14  # N column: Current_Online_Price
-CHROMEDRIVER = r"D:\Food project\chromedriver-win64\chromedriver.exe"
-SERVICE_KEY = r"D:\Food project\SERVICE_KEY.json"
+
+# Values can be overridden with environment variables for flexibility.
+SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "10NLm6vPypgpZdHaLoBsWoBq9I87NCzgq5oPCXgKxvTw")
+WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "Master Sheet")
+
+# Default column indexes match the original Google Sheet layout. They can be
+# customised by setting the respective environment variables instead of
+# editing this file directly. For example, ``NAME_COL=3 python fetch_prices.py``
+# will read item names from column C.
+NAME_COL = int(os.getenv("NAME_COL", "5"))  # E column: item name
+STORE_COL = int(os.getenv("STORE_COL", "12"))  # L column: Online_Store
+URL_COL = int(os.getenv("URL_COL", "13"))  # M column: Price_URL
+PRICE_COL = int(os.getenv("PRICE_COL", "14"))  # N column: Current_Online_Price
+CHROMEDRIVER = os.getenv("CHROMEDRIVER", "./chromedriver")
+SERVICE_KEY = os.getenv("SERVICE_KEY", "SERVICE_KEY.json")
 
 STORES = [
- q990xt-codex/fix-nameerror-in-fetch_prices.py
+
     {
         "name": "Japan Centre",
         "search": "https://www.japancentre.com/en/search?term={}",
@@ -155,10 +163,12 @@ STORES = [
             ".price .amount",
         ],
     },
+
 =======
+
    
-main
-]
+
+
 
 
 def parse_price(text: str) -> Optional[float]:
@@ -197,6 +207,8 @@ def find_product_link(soup: BeautifulSoup, base: str) -> Optional[str]:
 
 def authenticate_sheet():
     """Authenticate using service account credentials and return worksheet."""
+    if not os.path.exists(SERVICE_KEY):
+        raise FileNotFoundError(f"SERVICE_KEY file not found: {SERVICE_KEY}")
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive",
@@ -273,8 +285,9 @@ def main():
                 store_name, url, price, driver = fetch_from_store(name, store, driver)
                 if store_name:
                     ws.update_cell(idx, STORE_COL, store_name)
-                    ws.update_cell(idx, URL_COL, url)
-                    ws.update_cell(idx, PRICE_COL, price)
+                    ws.update_cell(idx, URL_COL, url or "")
+                    ws.update_cell(idx, PRICE_COL, price if price is not None else "")
+
                     print(f"Row {idx}, {name} -> {store_name}:{price}")
                     break
             else:
