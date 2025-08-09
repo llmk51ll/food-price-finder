@@ -30,6 +30,7 @@ CHROMEDRIVER = r"D:\Food project\chromedriver-win64\chromedriver.exe"
 SERVICE_KEY = r"D:\Food project\SERVICE_KEY.json"
 
 STORES = [
+ q990xt-codex/fix-nameerror-in-fetch_prices.py
     {
         "name": "Japan Centre",
         "search": "https://www.japancentre.com/en/search?term={}",
@@ -154,6 +155,9 @@ STORES = [
             ".price .amount",
         ],
     },
+=======
+   
+main
 ]
 
 
