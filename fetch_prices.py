@@ -21,6 +21,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
 # ------------ CONFIG ------------
+
 # Values can be overridden with environment variables for flexibility.
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "10NLm6vPypgpZdHaLoBsWoBq9I87NCzgq5oPCXgKxvTw")
 WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "Master Sheet")
@@ -37,6 +38,7 @@ CHROMEDRIVER = os.getenv("CHROMEDRIVER", "./chromedriver")
 SERVICE_KEY = os.getenv("SERVICE_KEY", "SERVICE_KEY.json")
 
 STORES = [
+
     {
         "name": "Japan Centre",
         "search": "https://www.japancentre.com/en/search?term={}",
@@ -161,7 +163,12 @@ STORES = [
             ".price .amount",
         ],
     },
-]
+
+=======
+
+   
+
+
 
 
 def parse_price(text: str) -> Optional[float]:
@@ -280,6 +287,7 @@ def main():
                     ws.update_cell(idx, STORE_COL, store_name)
                     ws.update_cell(idx, URL_COL, url or "")
                     ws.update_cell(idx, PRICE_COL, price if price is not None else "")
+
                     print(f"Row {idx}, {name} -> {store_name}:{price}")
                     break
             else:
