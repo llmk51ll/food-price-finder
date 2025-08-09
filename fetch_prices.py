@@ -24,7 +24,12 @@ from selenium.webdriver.chrome.service import Service
 # Values can be overridden with environment variables for flexibility.
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "10NLm6vPypgpZdHaLoBsWoBq9I87NCzgq5oPCXgKxvTw")
 WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "Master Sheet")
-NAME_COL = int(os.getenv("NAME_COL", "3"))  # C column: item name
+
+# Default column indexes match the original Google Sheet layout. They can be
+# customised by setting the respective environment variables instead of
+# editing this file directly. For example, ``NAME_COL=3 python fetch_prices.py``
+# will read item names from column C.
+NAME_COL = int(os.getenv("NAME_COL", "5"))  # E column: item name
 STORE_COL = int(os.getenv("STORE_COL", "12"))  # L column: Online_Store
 URL_COL = int(os.getenv("URL_COL", "13"))  # M column: Price_URL
 PRICE_COL = int(os.getenv("PRICE_COL", "14"))  # N column: Current_Online_Price
