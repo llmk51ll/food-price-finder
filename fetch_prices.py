@@ -217,24 +217,23 @@ def find_product_link(soup: BeautifulSoup, base: str) -> Optional[str]:
     search_term_norm = normalize(urllib.parse.unquote_plus(search_term))
 
     candidates = []
+    search_words = [w for w in re.split(r"\W+", search_term.lower()) if len(w) > 2]
     for a in soup.find_all("a", href=True):
         href = a["href"]
+        text = a.get_text(" ", strip=True) or ""
+        title = a.get("title", "")
+        combined = f"{text} {title} {href}".lower()
         if any(key in href.lower() for key in ["product", "products", "item", "shop"]):
-            text = a.get_text(" ", strip=True) or ""
-            title = a.get("title", "")
-            combined = f"{text} {title} {href}"
-            combined_norm = normalize(combined)
-            # If the normalized search term is in the normalized link text/title/href, prefer this link
-            if search_term_norm and search_term_norm in combined_norm:
+            # Debug: print all candidate product links
+            print(f"[DEBUG] Candidate link: text='{text}', title='{title}', href='{href}'")
+            # Count how many search words appear in the combined text/title/href
+            match_count = sum(1 for w in search_words if w in combined)
+            if match_count >= 2:
+                print(f"[DEBUG] Matched link for search term '{search_term}' (words matched: {match_count}): {href}")
                 return urllib.parse.urljoin(base, href)
-            candidates.append((combined_norm, href))
-    # If no good match, return the first candidate
-    if candidates:
-        return urllib.parse.urljoin(base, candidates[0][1])
-    # Fallback: first link on the page
-    first = soup.find("a", href=True)
-    if first:
-        return urllib.parse.urljoin(base, first["href"])
+            candidates.append((match_count, href))
+    # If no good match, skip this store (do not return a candidate)
+    print(f"[DEBUG] No strong product link match for search term '{search_term}'. Skipping store.")
     return None
 
 
@@ -256,25 +255,30 @@ def fetch_from_store(
     search_url = store["search"].format(urllib.parse.quote_plus(name))
     headers = {"User-Agent": "Mozilla/5.0"}
 
+    print(f"[DEBUG] Searching '{name}' at {store['name']} - {search_url}")
+
     # --- requests first ---
     try:
         response = requests.get(search_url, timeout=10, headers=headers)
         soup = BeautifulSoup(response.text, "html.parser")
         product_url = find_product_link(soup, response.url)
+        print(f"[DEBUG] Product URL found: {product_url}")
         if product_url:
             try:
                 detail = requests.get(product_url, timeout=10, headers=headers)
                 detail_soup = BeautifulSoup(detail.text, "html.parser")
                 price = extract_price_from_soup(detail_soup, store["detail_selectors"])
+                print(f"[DEBUG] Detail page price: {price}")
                 if price is not None:
                     return store["name"], detail.url, price, driver
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[DEBUG] Exception in detail page fetch: {e}")
         list_price = extract_price_from_soup(soup, store["list_selectors"])
+        print(f"[DEBUG] List page price: {list_price}")
         if list_price is not None:
             return store["name"], product_url or response.url, list_price, driver
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[DEBUG] Exception in search page fetch: {e}")
 
     # --- selenium fallback ---
     try:
@@ -287,17 +291,20 @@ def fetch_from_store(
         driver.get(search_url)
         soup = BeautifulSoup(driver.page_source, "html.parser")
         product_url = find_product_link(soup, driver.current_url)
+        print(f"[DEBUG] (Selenium) Product URL found: {product_url}")
         if product_url:
             driver.get(product_url)
             soup = BeautifulSoup(driver.page_source, "html.parser")
             price = extract_price_from_soup(soup, store["detail_selectors"])
+            print(f"[DEBUG] (Selenium) Detail page price: {price}")
             if price is not None:
                 return store["name"], driver.current_url, price, driver
         list_price = extract_price_from_soup(soup, store["list_selectors"])
+        print(f"[DEBUG] (Selenium) List page price: {list_price}")
         if list_price is not None:
             return store["name"], driver.current_url, list_price, driver
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[DEBUG] Exception in Selenium fetch: {e}")
 
     return None, None, None, driver
 
