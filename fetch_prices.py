@@ -7,7 +7,6 @@ Example cron (run daily at 7AM):
 On Windows, use Task Scheduler to schedule the script.
 """
 
-import os
 import re
 import urllib.parse
 from typing import Optional, Tuple
@@ -21,24 +20,16 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
 # ------------ CONFIG ------------
-
-# Values can be overridden with environment variables for flexibility.
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "10NLm6vPypgpZdHaLoBsWoBq9I87NCzgq5oPCXgKxvTw")
-WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "Master Sheet")
-
-# Default column indexes match the original Google Sheet layout. They can be
-# customised by setting the respective environment variables instead of
-# editing this file directly. For example, ``NAME_COL=3 python fetch_prices.py``
-# will read item names from column C.
-NAME_COL = int(os.getenv("NAME_COL", "5"))  # E column: item name
-STORE_COL = int(os.getenv("STORE_COL", "12"))  # L column: Online_Store
-URL_COL = int(os.getenv("URL_COL", "13"))  # M column: Price_URL
-PRICE_COL = int(os.getenv("PRICE_COL", "14"))  # N column: Current_Online_Price
-CHROMEDRIVER = os.getenv("CHROMEDRIVER", "./chromedriver")
-SERVICE_KEY = os.getenv("SERVICE_KEY", "SERVICE_KEY.json")
+SPREADSHEET_ID = "10NLm6vPypgpZdHaLoBsWoBq9I87NCzgq5oPCXgKxvTw"
+WORKSHEET_NAME = "Master Sheet"  # Worksheet name within the spreadsheet
+NAME_COL = 5  # E column: item name
+STORE_COL = 12  # L column: Online_Store
+URL_COL = 13  # M column: Price_URL
+PRICE_COL = 14  # N column: Current_Online_Price
+CHROMEDRIVER = r"D:\Food project\chromedriver-win64\chromedriver.exe"
+SERVICE_KEY = r"D:\Food project\SERVICE_KEY.json"
 
 STORES = [
-
     {
         "name": "Japan Centre",
         "search": "https://www.japancentre.com/en/search?term={}",
@@ -163,12 +154,20 @@ STORES = [
             ".price .amount",
         ],
     },
-
-=======
-
-   
-
-
+    {
+        "name": "Korean Supermarket",
+        "search": "https://www.koreansupermarket.co.uk/?s={}&post_type=product",
+        "list_selectors": [
+            ".woocommerce-Price-amount",
+            ".price .amount",
+        ],
+        "detail_selectors": [
+            "meta[itemprop='price']",
+            ".woocommerce-Price-amount",
+            ".price .amount",
+        ],
+    },
+]
 
 
 def parse_price(text: str) -> Optional[float]:
@@ -186,7 +185,11 @@ def extract_price_from_soup(soup: BeautifulSoup, selectors: list[str]) -> Option
         elem = soup.select_one(sel)
         if not elem:
             continue
-        text = elem.get("content") or elem.get_text()
+        # Try to get content attribute, else join all text (including children)
+        text = elem.get("content")
+        if not text:
+            # Join all text, including children, and remove extra whitespace
+            text = " ".join(elem.stripped_strings)
         price = parse_price(text)
         if price is not None:
             return price
@@ -194,11 +197,41 @@ def extract_price_from_soup(soup: BeautifulSoup, selectors: list[str]) -> Option
 
 
 def find_product_link(soup: BeautifulSoup, base: str) -> Optional[str]:
-    """Find a probable product link on the search page."""
+    """Find a probable product link on the search page that matches the search term."""
+    # Try to find a link whose text or title closely matches the search term
+    def normalize(text):
+        return re.sub(r"[^a-z0-9]", "", text.lower())
+
+    # Get the search term from the base URL (for matching)
+    parsed = urllib.parse.urlparse(base)
+    query = urllib.parse.parse_qs(parsed.query)
+    # Try to extract the search term from common query keys
+    search_keys = ["q", "term", "keywords", "s"]
+    search_term = None
+    for key in search_keys:
+        if key in query:
+            search_term = query[key][0]
+            break
+    if not search_term:
+        search_term = ""
+    search_term_norm = normalize(urllib.parse.unquote_plus(search_term))
+
+    candidates = []
     for a in soup.find_all("a", href=True):
         href = a["href"]
         if any(key in href.lower() for key in ["product", "products", "item", "shop"]):
-            return urllib.parse.urljoin(base, href)
+            text = a.get_text(" ", strip=True) or ""
+            title = a.get("title", "")
+            combined = f"{text} {title} {href}"
+            combined_norm = normalize(combined)
+            # If the normalized search term is in the normalized link text/title/href, prefer this link
+            if search_term_norm and search_term_norm in combined_norm:
+                return urllib.parse.urljoin(base, href)
+            candidates.append((combined_norm, href))
+    # If no good match, return the first candidate
+    if candidates:
+        return urllib.parse.urljoin(base, candidates[0][1])
+    # Fallback: first link on the page
     first = soup.find("a", href=True)
     if first:
         return urllib.parse.urljoin(base, first["href"])
@@ -207,8 +240,6 @@ def find_product_link(soup: BeautifulSoup, base: str) -> Optional[str]:
 
 def authenticate_sheet():
     """Authenticate using service account credentials and return worksheet."""
-    if not os.path.exists(SERVICE_KEY):
-        raise FileNotFoundError(f"SERVICE_KEY file not found: {SERVICE_KEY}")
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive",
@@ -280,18 +311,20 @@ def main():
             name = row[NAME_COL - 1].strip()
             if not name:
                 continue
-            store_name = url = price = None
+            found = False
             for store in STORES:
                 store_name, url, price, driver = fetch_from_store(name, store, driver)
-                if store_name:
+                if store_name and price is not None and price > 0:
                     ws.update_cell(idx, STORE_COL, store_name)
-                    ws.update_cell(idx, URL_COL, url or "")
-                    ws.update_cell(idx, PRICE_COL, price if price is not None else "")
-
+                    ws.update_cell(idx, URL_COL, url)
+                    ws.update_cell(idx, PRICE_COL, price)
                     print(f"Row {idx}, {name} -> {store_name}:{price}")
+                    found = True
                     break
-            else:
+            if not found:
                 ws.update_cell(idx, PRICE_COL, "N/A")
+                ws.update_cell(idx, STORE_COL, "")
+                ws.update_cell(idx, URL_COL, "")
                 print(f"Row {idx}, {name} -> N/A")
     finally:
         if driver is not None:
